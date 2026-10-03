@@ -1,0 +1,71 @@
+name: tf
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  id-token: write
+  pull-requests: write # allow the job to write to pull requests (comments)
+  contents: write # read needed to checkout repo, write to allow the job to merge a PR, and/or write a merge comment on a commit
+  actions: write # read allows dawidd6/action-download-artifact to pull the latest artifact, write allows artifact deletion
+  checks: write # write allows the job to update the check run status
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ github.event_name == 'pull_request' && 'plan' || 'apply' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && true || false }}
+
+jobs:
+  # the generate matrix job fires on both PR and PR_review events, and does checks of
+  # locks/concurrency/mergeability if prep_for_apply true.
+  changes:
+    uses: obeliskm/taquito/.github/workflows/tf-generate-matrix.yml@v1
+    secrets: inherit
+
+  plan:
+    name: ${{ matrix.name }}
+    needs: changes
+    uses: obeliskm/taquito/.github/workflows/tf-plan.yml@v1
+    secrets: inherit
+    if: needs.changes.outputs.run_plan == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.changes.outputs.tf_matrix) }}
+    with:
+      job_id: ${{ matrix.name }}
+
+  apply:
+    name: ${{ matrix.name }}
+    needs: changes
+    uses: obeliskm/taquito/.github/workflows/tf-apply-before-merge.yml@v1
+    secrets: inherit
+    if: needs.changes.outputs.lock_claimed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.changes.outputs.tf_matrix) }}
+    with:
+      job_id: ${{ matrix.name }}
+
+  automerge:
+    runs-on: ubuntu-26.04
+    needs: apply
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: enable PR automerge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_PR: ${{ github.event.pull_request.number }}
+        run: gh pr merge --merge --auto "$GH_PR"
+
+      - name: release lock
+        uses: github/lock@v3.0.1
+        id: release_lock
+        with:
+          mode: unlock
+

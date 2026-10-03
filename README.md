@@ -1,2 +1,2 @@
-# taquito-test
-Test resources for Taquito
+# taquito-examples
+Tests for taquitos, the little terraform/tofu TACoS for Github Actions 🎉

@@ -1,0 +1,20 @@
+# as a general rule PR's will be unlocked after successful applies by the automerge
+# job, but apply run failures can leave a PR locked.  Sometimes it easier to merge
+# the branch and move on, in which case this workflow can be run manually by a human
+# from the actions console to unlock the PR. 
+
+name: manual PR unlock
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unlock:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: github/lock@v3.0.1
+        with:
+          mode: "unlock"
